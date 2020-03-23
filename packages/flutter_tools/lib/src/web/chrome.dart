@@ -116,6 +116,10 @@ class ChromeLauncher {
   ///
   /// `skipCheck` does not attempt to make a devtools connection before returning.
   Future<Chrome> launch(String url, { bool headless = false, int debugPort, bool skipCheck = false, Directory dataDir }) async {
+    if (_currentCompleter.isCompleted) {
+      throwToolExit('Only one instance of chrome can be started.');
+    }
+
     // This is a JSON file which contains configuration from the
     // browser session, such as window position. It is located
     // under the Chrome data-dir folder.
@@ -203,15 +207,12 @@ class ChromeLauncher {
   }
 
   static Future<Chrome> _connect(Chrome chrome, bool skipCheck) async {
-    if (_currentCompleter.isCompleted) {
-      throwToolExit('Only one instance of chrome can be started.');
-    }
     // The connection is lazy. Try a simple call to make sure the provided
     // connection is valid.
     if (!skipCheck) {
       try {
         await chrome.chromeConnection.getTabs();
-      } catch (e) {
+      } on Exception catch (e) {
         await chrome.close();
         throwToolExit(
             'Unable to connect to Chrome debug port: ${chrome.debugPort}\n $e');
@@ -234,8 +235,11 @@ class ChromeLauncher {
       final HttpClientRequest request = await client.getUrl(base.resolve('/json/list'));
       final HttpClientResponse response = await request.close();
       final List<dynamic> jsonObject = await json.fuse(utf8).decoder.bind(response).single as List<dynamic>;
+      if (jsonObject == null || jsonObject.isEmpty) {
+        return base;
+      }
       return base.resolve(jsonObject.first['devtoolsFrontendUrl'] as String);
-    } catch (_) {
+    } on Exception {
       // If we fail to talk to the remote debugger protocol, give up and return
       // the raw URL rather than crashing.
       return base;
@@ -259,13 +263,11 @@ class Chrome {
   final ChromeConnection chromeConnection;
   final Uri remoteDebuggerUri;
 
-  static Completer<Chrome> _currentCompleter = Completer<Chrome>();
-
-  Future<void> get onExit => _currentCompleter.future;
+  Future<int> get onExit => _process.exitCode;
 
   Future<void> close() async {
-    if (_currentCompleter.isCompleted) {
-      _currentCompleter = Completer<Chrome>();
+    if (ChromeLauncher.hasChromeInstance) {
+      ChromeLauncher._currentCompleter = Completer<Chrome>();
     }
     chromeConnection.close();
     _process?.kill();

@@ -88,6 +88,18 @@ void main() {
         Platform: () => platform,
       }, initializeFlutterRoot: false);
 
+      testUsingContext('Fetches tags when --version is used', () async {
+        final MockFlutterVersion version = globals.flutterVersion as MockFlutterVersion;
+
+        await runner.run(<String>['--version']);
+
+        verify(version.fetchTagsAndUpdate()).called(1);
+      }, overrides: <Type, Generator>{
+        FileSystem: () => fs,
+        ProcessManager: () => FakeProcessManager.any(),
+        Platform: () => platform,
+      }, initializeFlutterRoot: false);
+
       testUsingContext('throw tool exit if the version file cannot be written', () async {
         final MockFlutterVersion version = globals.flutterVersion as MockFlutterVersion;
         when(version.ensureVersionFile()).thenThrow(const FileSystemException());
@@ -279,7 +291,7 @@ class FakeFlutterCommand extends FlutterCommand {
 
   @override
   Future<FlutterCommandResult> runCommand() {
-    preferences = outputPreferences;
+    preferences = globals.outputPreferences;
     return Future<FlutterCommandResult>.value(const FlutterCommandResult(ExitStatus.success));
   }
 
