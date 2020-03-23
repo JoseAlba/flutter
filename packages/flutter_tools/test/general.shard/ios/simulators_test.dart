@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,9 @@ import 'dart:io' show ProcessResult, Process;
 import 'package:file/file.dart';
 import 'package:flutter_tools/src/build_info.dart';
 import 'package:file/memory.dart';
+import 'package:flutter_tools/src/build_system/build_system.dart';
+import 'package:flutter_tools/src/build_system/targets/dart.dart';
+import 'package:flutter_tools/src/build_system/targets/icon_tree_shaker.dart';
 import 'package:flutter_tools/src/device.dart';
 import 'package:flutter_tools/src/application_package.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
@@ -16,6 +19,8 @@ import 'package:flutter_tools/src/ios/plist_parser.dart';
 import 'package:flutter_tools/src/ios/simulators.dart';
 import 'package:flutter_tools/src/macos/xcode.dart';
 import 'package:flutter_tools/src/project.dart';
+import 'package:flutter_tools/src/globals.dart' as globals;
+
 import 'package:mockito/mockito.dart';
 import 'package:platform/platform.dart';
 import 'package:process/process.dart';
@@ -34,10 +39,34 @@ class MockPlistUtils extends Mock implements PlistParser {}
 
 void main() {
   FakePlatform osx;
+  FileSystemUtils fsUtils;
+  MemoryFileSystem fileSystem;
 
   setUp(() {
     osx = FakePlatform.fromPlatform(const LocalPlatform());
     osx.operatingSystem = 'macos';
+    fileSystem = MemoryFileSystem();
+    fsUtils = FileSystemUtils(fileSystem: fileSystem, platform: osx);
+  });
+
+  group('_IOSSimulatorDevicePortForwarder', () {
+    testUsingContext('dispose() does not throw an exception', () async {
+      final IOSSimulator simulator = IOSSimulator('123');
+      final DevicePortForwarder portForwarder = simulator.portForwarder;
+      await portForwarder.forward(123);
+      await portForwarder.forward(124);
+      expect(portForwarder.forwardedPorts.length, 2);
+      try {
+        await portForwarder.dispose();
+      } catch (e) {
+        fail('Encountered exception: $e');
+      }
+      expect(portForwarder.forwardedPorts.length, 0);
+    }, overrides: <Type, Generator>{
+      Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
+    }, testOn: 'posix');
   });
 
   group('logFilePath', () {
@@ -46,6 +75,9 @@ void main() {
       expect(IOSSimulator('123').logFilePath, '/foo/bar/Library/Logs/CoreSimulator/123/system.log');
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystemUtils: () => fsUtils,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     }, testOn: 'posix');
 
     testUsingContext('respects IOS_SIMULATOR_LOG_FILE_PATH', () {
@@ -54,6 +86,9 @@ void main() {
       expect(IOSSimulator('456').logFilePath, '/baz/qux/456/system.log');
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystemUtils: () => fsUtils,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
   });
 
@@ -132,55 +167,95 @@ void main() {
       expect(IOSSimulator('x', name: 'Apple TV').isSupported(), false);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('Apple Watch is unsupported', () {
       expect(IOSSimulator('x', name: 'Apple Watch').isSupported(), false);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPad 2 is supported', () {
       expect(IOSSimulator('x', name: 'iPad 2').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPad Retina is supported', () {
       expect(IOSSimulator('x', name: 'iPad Retina').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPhone 5 is supported', () {
       expect(IOSSimulator('x', name: 'iPhone 5').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPhone 5s is supported', () {
       expect(IOSSimulator('x', name: 'iPhone 5s').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPhone SE is supported', () {
       expect(IOSSimulator('x', name: 'iPhone SE').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPhone 7 Plus is supported', () {
       expect(IOSSimulator('x', name: 'iPhone 7 Plus').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('iPhone X is supported', () {
       expect(IOSSimulator('x', name: 'iPhone X').isSupported(), true);
     }, overrides: <Type, Generator>{
       Platform: () => osx,
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
     });
+  });
+
+  testUsingContext('builds with targetPlatform', () async {
+    final IOSSimulator simulator = IOSSimulator('x', name: 'iPhone X');
+    when(buildSystem.build(any, any)).thenAnswer((Invocation invocation) async {
+      return BuildResult(success: true);
+    });
+    await simulator.sideloadUpdatedAssetsForInstalledApplicationBundle(BuildInfo.debug, 'lib/main.dart');
+
+    final VerificationResult result = verify(buildSystem.build(any, captureAny));
+    final Environment environment = result.captured.single as Environment;
+    expect(environment.defines, <String, String>{
+      kTargetFile: 'lib/main.dart',
+      kTargetPlatform: 'ios',
+      kBuildMode: 'debug',
+      kTrackWidgetCreation: 'false',
+      kIconTreeShakerFlag: null,
+    });
+  }, overrides: <Type, Generator>{
+    BuildSystem: () => MockBuildSystem(),
+    FileSystem: () => fileSystem,
+    ProcessManager: () => FakeProcessManager.any(),
   });
 
   group('Simulator screenshot', () {
@@ -202,13 +277,17 @@ void main() {
     });
 
     testUsingContext(
-      'old Xcode doesn\'t support screenshot',
+      "old Xcode doesn't support screenshot",
       () {
         when(mockXcode.majorVersion).thenReturn(7);
         when(mockXcode.minorVersion).thenReturn(1);
         expect(deviceUnderTest.supportsScreenshot, false);
       },
-      overrides: <Type, Generator>{Xcode: () => mockXcode},
+      overrides: <Type, Generator>{
+        Xcode: () => mockXcode,
+        FileSystem: () => fileSystem,
+        ProcessManager: () => FakeProcessManager.any(),
+      },
     );
 
     testUsingContext(
@@ -218,16 +297,16 @@ void main() {
         when(mockXcode.minorVersion).thenReturn(2);
         expect(deviceUnderTest.supportsScreenshot, true);
         final MockFile mockFile = MockFile();
-        when(mockFile.path).thenReturn(fs.path.join('some', 'path', 'to', 'screenshot.png'));
+        when(mockFile.path).thenReturn(globals.fs.path.join('some', 'path', 'to', 'screenshot.png'));
         await deviceUnderTest.takeScreenshot(mockFile);
         verify(mockProcessManager.run(
           <String>[
-              '/usr/bin/xcrun',
-              'simctl',
-              'io',
-              'x',
-              'screenshot',
-              fs.path.join('some', 'path', 'to', 'screenshot.png'),
+            '/usr/bin/xcrun',
+            'simctl',
+            'io',
+            'x',
+            'screenshot',
+            globals.fs.path.join('some', 'path', 'to', 'screenshot.png'),
           ],
           environment: null,
           workingDirectory: null,
@@ -238,6 +317,7 @@ void main() {
         // Test a real one. Screenshot doesn't require instance states.
         SimControl: () => SimControl(),
         Xcode: () => mockXcode,
+        FileSystem: () => fileSystem,
       },
     );
   });
@@ -261,6 +341,7 @@ void main() {
     },
     overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
+      FileSystem: () => fileSystem,
     });
 
     testUsingContext('uses /usr/bin/log on iOS 11 and above', () async {
@@ -273,6 +354,7 @@ void main() {
     },
     overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
+      FileSystem: () => fileSystem,
     });
   });
 
@@ -295,6 +377,7 @@ void main() {
     },
     overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
+      FileSystem: () => fileSystem,
     });
 
     testUsingContext('uses /usr/bin/log on iOS 11 and above', () async {
@@ -304,6 +387,7 @@ void main() {
     },
     overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
+      FileSystem: () => fileSystem,
     });
   });
 
@@ -338,7 +422,7 @@ void main() {
 
       final IOSSimulator device = IOSSimulator('123456', simulatorCategory: 'iOS 11.0');
       final DeviceLogReader logReader = device.getLogReader(
-        app: BuildableIOSApp(mockIosProject),
+        app: await BuildableIOSApp.fromProject(mockIosProject),
       );
 
       final List<String> lines = await logReader.logLines.toList();
@@ -349,6 +433,7 @@ void main() {
       ]);
     }, overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
+      FileSystem: () => fileSystem,
     });
   });
 
@@ -426,6 +511,7 @@ void main() {
     }, overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
       SimControl: () => simControl,
+      FileSystem: () => fileSystem,
     });
 
     testUsingContext('getDevices handles bad simctl output', () async {
@@ -437,6 +523,7 @@ void main() {
     }, overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
       SimControl: () => simControl,
+      FileSystem: () => fileSystem,
     });
 
     testUsingContext('sdkMajorVersion defaults to 11 when sdkNameAndVersion is junk', () async {
@@ -454,27 +541,27 @@ void main() {
     });
 
     testUsingContext("startApp uses compiled app's Info.plist to find CFBundleIdentifier", () async {
-        final IOSSimulator device = IOSSimulator('x', name: 'iPhone SE', simulatorCategory: 'iOS 11.2');
-        when(PlistParser.instance.getValueFromFile(any, any)).thenReturn('correct');
+      final IOSSimulator device = IOSSimulator('x', name: 'iPhone SE', simulatorCategory: 'iOS 11.2');
+      when(globals.plistParser.getValueFromFile(any, any)).thenReturn('correct');
 
-        final Directory mockDir = fs.currentDirectory;
-        final IOSApp package = PrebuiltIOSApp(projectBundleId: 'incorrect', bundleName: 'name', bundleDir: mockDir);
+      final Directory mockDir = globals.fs.currentDirectory;
+      final IOSApp package = PrebuiltIOSApp(projectBundleId: 'incorrect', bundleName: 'name', bundleDir: mockDir);
 
-        const BuildInfo mockInfo = BuildInfo(BuildMode.debug, 'flavor');
-        final DebuggingOptions mockOptions = DebuggingOptions.disabled(mockInfo);
-        await device.startApp(package, prebuiltApplication: true, debuggingOptions: mockOptions);
+      const BuildInfo mockInfo = BuildInfo(BuildMode.debug, 'flavor', treeShakeIcons: false);
+      final DebuggingOptions mockOptions = DebuggingOptions.disabled(mockInfo);
+      await device.startApp(package, prebuiltApplication: true, debuggingOptions: mockOptions);
 
-        verify(simControl.launch(any, 'correct', any));
-      },
-      overrides: <Type, Generator>{
-        SimControl: () => simControl,
-        PlistParser: () => MockPlistUtils(),
-      },
-    );
+      verify(simControl.launch(any, 'correct', any));
+    }, overrides: <Type, Generator>{
+      SimControl: () => simControl,
+      PlistParser: () => MockPlistUtils(),
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
+    });
   });
 
   testUsingContext('IOSDevice.isSupportedForProject is true on module project', () async {
-    fs.file('pubspec.yaml')
+    globals.fs.file('pubspec.yaml')
       ..createSync()
       ..writeAsStringSync(r'''
 name: example
@@ -482,32 +569,37 @@ name: example
 flutter:
   module: {}
 ''');
-    fs.file('.packages').createSync();
+    globals.fs.file('.packages').createSync();
     final FlutterProject flutterProject = FlutterProject.current();
 
     expect(IOSSimulator('test').isSupportedForProject(flutterProject), true);
   }, overrides: <Type, Generator>{
     FileSystem: () => MemoryFileSystem(),
+    ProcessManager: () => FakeProcessManager.any(),
   });
 
   testUsingContext('IOSDevice.isSupportedForProject is true with editable host app', () async {
-    fs.file('pubspec.yaml').createSync();
-    fs.file('.packages').createSync();
-    fs.directory('ios').createSync();
+    globals.fs.file('pubspec.yaml').createSync();
+    globals.fs.file('.packages').createSync();
+    globals.fs.directory('ios').createSync();
     final FlutterProject flutterProject = FlutterProject.current();
 
     expect(IOSSimulator('test').isSupportedForProject(flutterProject), true);
   }, overrides: <Type, Generator>{
-    FileSystem: () => MemoryFileSystem(),
+    ProcessManager: () => FakeProcessManager.any(),
+    FileSystem: () => fileSystem,
   });
 
   testUsingContext('IOSDevice.isSupportedForProject is false with no host app and no module', () async {
-    fs.file('pubspec.yaml').createSync();
-    fs.file('.packages').createSync();
+    globals.fs.file('pubspec.yaml').createSync();
+    globals.fs.file('.packages').createSync();
     final FlutterProject flutterProject = FlutterProject.current();
 
     expect(IOSSimulator('test').isSupportedForProject(flutterProject), false);
   }, overrides: <Type, Generator>{
-    FileSystem: () => MemoryFileSystem(),
+    FileSystem: () => fileSystem,
+    ProcessManager: () => FakeProcessManager.any(),
   });
 }
+
+class MockBuildSystem extends Mock implements BuildSystem {}

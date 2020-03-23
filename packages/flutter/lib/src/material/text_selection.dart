@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -40,17 +40,13 @@ class _TextSelectionToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> items = <Widget>[];
     final MaterialLocalizations localizations = MaterialLocalizations.of(context);
-
-    if (handleCut != null)
-      items.add(FlatButton(child: Text(localizations.cutButtonLabel), onPressed: handleCut));
-    if (handleCopy != null)
-      items.add(FlatButton(child: Text(localizations.copyButtonLabel), onPressed: handleCopy));
-    if (handlePaste != null)
-      items.add(FlatButton(child: Text(localizations.pasteButtonLabel), onPressed: handlePaste,));
-    if (handleSelectAll != null)
-      items.add(FlatButton(child: Text(localizations.selectAllButtonLabel), onPressed: handleSelectAll));
+    final List<Widget> items = <Widget>[
+      if (handleCut != null) FlatButton(child: Text(localizations.cutButtonLabel), onPressed: handleCut),
+      if (handleCopy != null) FlatButton(child: Text(localizations.copyButtonLabel), onPressed: handleCopy),
+      if (handlePaste != null) FlatButton(child: Text(localizations.pasteButtonLabel), onPressed: handlePaste),
+      if (handleSelectAll != null) FlatButton(child: Text(localizations.selectAllButtonLabel), onPressed: handleSelectAll),
+    ];
 
     // If there is no option available, build an empty widget.
     if (items.isEmpty) {
@@ -124,8 +120,10 @@ class _TextSelectionHandlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Paint paint = Paint()..color = color;
     final double radius = size.width/2.0;
-    canvas.drawCircle(Offset(radius, radius), radius, paint);
-    canvas.drawRect(Rect.fromLTWH(0.0, 0.0, radius, radius), paint);
+    final Rect circle = Rect.fromCircle(center: Offset(radius, radius), radius: radius);
+    final Rect point = Rect.fromLTWH(0.0, 0.0, radius, radius);
+    final Path path = Path()..addOval(circle)..addRect(point);
+    canvas.drawPath(path, paint);
   }
 
   @override
@@ -238,8 +236,9 @@ class _MaterialTextSelectionControls extends TextSelectionControls {
     // Android allows SelectAll when selection is not collapsed, unless
     // everything has already been selected.
     final TextEditingValue value = delegate.textEditingValue;
-    return value.text.isNotEmpty &&
-      !(value.selection.start == 0 && value.selection.end == value.text.length);
+    return delegate.selectAllEnabled &&
+           value.text.isNotEmpty &&
+           !(value.selection.start == 0 && value.selection.end == value.text.length);
   }
 }
 
